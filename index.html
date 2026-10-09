@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EPUB 原生目录解析与智能分卷工作台</title>
+    <title>EPUB/TXT 原生目录解析与智能分卷工作台</title>
     <!-- 引入 JSZip 纯前端解包/打包 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
@@ -76,7 +76,7 @@
             gap: 12px;
             padding-bottom: 16px;
             border-bottom: 1px solid var(--border);
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
         .badge {
             background: var(--primary-light);
@@ -87,6 +87,57 @@
             font-weight: 600;
         }
         .badge-success { background: #dcfce7; color: #15803d; }
+
+        /* TXT 自定义匹配控制条 */
+        .txt-config-bar {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .txt-config-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            flex: 1;
+        }
+        .txt-input {
+            padding: 7px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            outline: none;
+            width: 200px;
+            transition: border-color 0.2s;
+        }
+        .txt-input:focus { border-color: var(--primary); }
+        .preset-tags {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .tag-btn {
+            background: #fff;
+            border: 1px solid var(--border);
+            padding: 3px 8px;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            cursor: pointer;
+            color: var(--text-muted);
+            transition: all 0.15s;
+        }
+        .tag-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: var(--primary-light);
+        }
 
         /* 工作区栅格 */
         .workspace-grid {
@@ -107,7 +158,7 @@
             align-items: center;
         }
 
-        /* 章节目录滚动区（具备相对定位以承载悬浮条） */
+        /* 章节目录滚动区 */
         .chapter-panel-wrapper {
             position: relative;
             display: flex;
@@ -120,7 +171,7 @@
             border-radius: 8px;
             background: #fafafa;
             padding: 6px;
-            user-select: none; /* 防止双击拖动时选中文本干扰 Shift 点击 */
+            user-select: none;
         }
         .chapter-scroll-box::-webkit-scrollbar { width: 5px; }
         .chapter-scroll-box::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -142,7 +193,6 @@
             border-color: #cbd5e1;
             background: #f8fafc;
         }
-        /* 选中态高亮 */
         .chapter-item.selected {
             background: #eef2ff !important;
             border-color: var(--primary) !important;
@@ -163,7 +213,7 @@
             font-size: 0.75rem;
         }
 
-        /* 悬浮框选操作条 (Floating Dock) */
+        /* 悬浮框选操作条 */
         .selection-dock {
             position: absolute;
             bottom: 12px;
@@ -226,7 +276,6 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
-        /* 分卷配置 */
         .range-builder { display: flex; flex-direction: column; gap: 10px; }
         .range-row {
             display: flex;
@@ -374,8 +423,8 @@
 
 <div class="app-container">
     <div class="header">
-        <h1>EPUB 智能解析与精准分卷工作台</h1>
-        <p>按住 Shift 快捷框选范围 · 支持原生目录跳转 (TOC) · 智能续接</p>
+        <h1>EPUB / TXT 智能解析与精准分卷工作台</h1>
+        <p>支持按章节关键字/正则自定义切分 · 按住 Shift 框选分卷 · 智能导出</p>
     </div>
 
     <!-- 上传卡片 -->
@@ -393,18 +442,34 @@
                 <h2 id="bookTitle" style="font-size: 1.15rem; font-weight:700;">未命名作品</h2>
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
-                <span class="badge badge-success" id="indexMethodBadge">EPUB 原生目录 (TOC)</span>
+                <span class="badge badge-success" id="indexMethodBadge">解析模式</span>
                 <span class="badge" id="totalChaptersBadge">0 章</span>
                 <span class="badge" id="totalWordsBadge">0 字</span>
             </div>
         </div>
 
+        <!-- TXT 专享的自定义匹配规则工具栏 -->
+        <div class="txt-config-bar" id="txtConfigBar" style="display: none;">
+            <div class="txt-config-left">
+                <span style="font-size:0.85rem; font-weight: 600; color: #334155;">章节标题匹配规则:</span>
+                <input type="text" id="chapterPatternInput" class="txt-input" placeholder="例如: ep. 或 第" value="ep.">
+                <button class="btn btn-outline btn-sm" onclick="applyCustomTxtPattern()">重新识别</button>
+                <div class="preset-tags">
+                    <span style="font-size:0.75rem; color:#94a3b8;">预设:</span>
+                    <button class="tag-btn" onclick="setPresetPattern('ep.')">ep.</button>
+                    <button class="tag-btn" onclick="setPresetPattern('episode')">episode</button>
+                    <button class="tag-btn" onclick="setPresetPattern('默认(第X章/卷)')">中文章节</button>
+                </div>
+            </div>
+            <span class="hint-text">支持前缀(如 ep.)或完整正则(如 /.../i)</span>
+        </div>
+
         <div class="workspace-grid">
-            <!-- 左侧：章节树列表 (支持 Shift 框选) -->
+            <!-- 左侧：章节树列表 -->
             <div class="chapter-panel-wrapper">
                 <div class="panel-title">
                     <span>章节目录索引</span>
-                    <span class="hint-text">按住 Shift 可范围框选</span>
+                    <span class="hint-text">按住 Shift 可连选</span>
                 </div>
                 <div class="chapter-scroll-box" id="chapterListContainer"></div>
 
@@ -437,7 +502,7 @@
                     <button class="btn btn-outline" style="width: 100%; margin-top: 10px; border-style: dashed;" onclick="addNextRangeRow()">
                         ➕ 添加下一卷 (自动递增续接)
                     </button>
-                    <div class="hint-text" style="margin-top: 8px;">💡 在左边按住 Shift 点选章节，点击底部的「设为新分卷」可直接填充此处。</div>
+                    <div class="hint-text" style="margin-top: 8px;">💡 在左边按住 Shift 框选章节，点击底部的「设为新分卷」可直接同步至此。</div>
                 </div>
 
                 <!-- 模式 2：固定章数 -->
@@ -455,8 +520,8 @@
                 <!-- 模式 3：单章独立导出 -->
                 <div class="tab-content" id="mode-single">
                     <div class="preset-config-box">
-                        <p style="font-size:0.9rem; font-weight:600;">一章一文件全量独立导出</p>
-                        <p class="hint-text">将为每个章节单独建立 .txt 文件（如：<code>001_第一章.txt</code>），适合音频播放器或掌阅按章检索。</p>
+                        <p style="font-size:0.9rem; font-weight:600;">一章一文件独立导出</p>
+                        <p class="hint-text">将为每个章节单独建立 .txt 文件（如：<code>001_EP.0 我喜欢你.txt</code>）。</p>
                     </div>
                 </div>
 
@@ -468,7 +533,7 @@
                             <input type="number" id="wordChunkLimit" value="100000" min="5000" step="10000">
                             <span>字</span>
                         </div>
-                        <div class="hint-text">智能断句保护：将在字数阈值附近的自然段落换行处分割，避免腰斩句子。</div>
+                        <div class="hint-text">将在字数阈值附近的自然段落换行处分割，避免截断正文。</div>
                     </div>
                 </div>
 
@@ -500,9 +565,11 @@
 </div>
 
 <script>
-    let chapters = []; // [{ index: 1, title: '第1章', content: '...' }]
+    let chapters = [];
     let baseFileName = "Novel";
     let activeMode = 'event';
+    let rawTxtContent = ""; // 缓存 TXT 原始文本供再次正则解析
+    let currentFileType = "";
 
     // 框选记录
     let lastAnchorIndex = null;
@@ -512,7 +579,7 @@
     const fileInput = document.getElementById('fileInput');
     const workspace = document.getElementById('workspace');
 
-    // 拖拽与上传监听
+    // 拖拽与上传
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = 'var(--primary)'; });
     dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = '#cbd5e1'; });
     dropZone.addEventListener('drop', (e) => {
@@ -529,23 +596,98 @@
         document.getElementById('uploadTip').innerText = `已载入: ${file.name}`;
         chapters = [];
         clearSelection();
-        const ext = file.name.split('.').pop().toLowerCase();
-        if (ext === 'epub') parseEpubWithNativeToc(file);
-        else if (ext === 'txt') parseTxt(file);
-        else alert('仅支持 .epub 或 .txt 文件！');
+        currentFileType = file.name.split('.').pop().toLowerCase();
+        
+        if (currentFileType === 'epub') {
+            document.getElementById('txtConfigBar').style.display = 'none';
+            parseEpubWithNativeToc(file);
+        } else if (currentFileType === 'txt') {
+            document.getElementById('txtConfigBar').style.display = 'flex';
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                rawTxtContent = e.target.result;
+                // 检测文本内是否包含类似 ep. 或 EP.，若有则自动赋默认值
+                if (/ep\s*\.\s*\d+/i.test(rawTxtContent)) {
+                    document.getElementById('chapterPatternInput').value = "ep.";
+                } else {
+                    document.getElementById('chapterPatternInput').value = "默认(第X章/卷)";
+                }
+                parseTxtByPattern(rawTxtContent, document.getElementById('chapterPatternInput').value);
+            };
+            reader.readAsText(file, 'utf-8');
+        } else {
+            alert('仅支持 .epub 或 .txt 文件！');
+        }
     }
+
+    // 辅助转义正则特殊字符
+    function escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // 根据输入规则进行解析
+    function parseTxtByPattern(text, patternStr) {
+        let patternRegex;
+        patternStr = patternStr.trim();
+
+        if (patternStr === "默认(第X章/卷)" || patternStr === "") {
+            patternRegex = /(?<=\n)(?=(?:第[0-9一二三四五六七八九十百千万]+[章卷回节]|[C|c]hapter\s*\d+|[E|e]pisode\s*\d+))/g;
+        } else if (patternStr.startsWith('/') && patternStr.lastIndexOf('/') > 0) {
+            // 用户输入了原生 RegExp 格式，如 /EP\.\d+/i
+            const lastSlash = patternStr.lastIndexOf('/');
+            const pattern = patternStr.substring(1, lastSlash);
+            const flags = patternStr.substring(lastSlash + 1);
+            patternRegex = new RegExp(`(?<=\\n)(?=${pattern})`, flags.includes('g') ? flags : flags + 'g');
+        } else {
+            // 用户输入简单前缀，如 ep. 或 EP 或 话
+            const escaped = escapeRegExp(patternStr);
+            // 智能构建：匹配 行首(+空白) + 关键字 + 可选数字
+            patternRegex = new RegExp(`(?<=\\n)(?=[ \\t]*${escaped}\\s*\\d*)`, 'gi');
+        }
+
+        const pieces = text.split(patternRegex);
+        const validPieces = pieces.filter(p => p.trim().length > 0);
+
+        if (validPieces.length <= 1 && text.length > 500) {
+            alert(`⚠️ 规则未能匹配到章节（仅切分出 ${validPieces.length} 块）！\n请检查文本格式并在匹配框输入对应的章节前缀（例如输入 "EP."）。`);
+        }
+
+        chapters = validPieces.map((content, idx) => {
+            const firstLine = content.trim().split('\n')[0].substring(0, 50).trim();
+            return { index: idx + 1, title: firstLine || `第 ${idx + 1} 节`, content: content.trim() };
+        });
+
+        document.getElementById('indexMethodBadge').innerText = `TXT 规则匹配 (${chapters.length} 章节)`;
+        document.getElementById('indexMethodBadge').className = chapters.length > 1 ? "badge badge-success" : "badge";
+        renderWorkspace();
+    }
+
+    function applyCustomTxtPattern() {
+        if (!rawTxtContent) return;
+        const val = document.getElementById('chapterPatternInput').value;
+        parseTxtByPattern(rawTxtContent, val);
+    }
+
+    function setPresetPattern(val) {
+        document.getElementById('chapterPatternInput').value = val;
+        applyCustomTxtPattern();
+    }
+
+    // 支持在输入框直接回车重新识别
+    document.getElementById('chapterPatternInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') applyCustomTxtPattern();
+    });
 
     function switchMode(mode) {
         activeMode = mode;
         document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        
         document.getElementById(`tab-btn-${mode}`).classList.add('active');
         document.getElementById(`mode-${mode}`).classList.add('active');
         updateFixedPreviewHint();
     }
 
-    // 纯净文本清洗
+    // 纯文本清洗
     function htmlToCleanText(htmlStr) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(htmlStr, 'text/html');
@@ -575,7 +717,7 @@
         return stack.join('/');
     }
 
-    // EPUB 原生 TOC/跳转导航解析
+    // EPUB 解析
     async function parseEpubWithNativeToc(file) {
         try {
             const zip = await JSZip.loadAsync(file);
@@ -751,24 +893,7 @@
         }
     }
 
-    function parseTxt(file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const text = e.target.result;
-            const reg = /(?<=\n)(?=(?:第[0-9一二三四五六七八九十百千万]+[章卷回节]|[C|c]hapter\s*\d+))/g;
-            const pieces = text.split(reg);
-            chapters = pieces.filter(p => p.trim().length > 0).map((content, idx) => {
-                const firstLine = content.trim().split('\n')[0].substring(0, 30).trim();
-                return { index: idx + 1, title: firstLine || `第 ${idx + 1} 章`, content: content.trim() };
-            });
-            document.getElementById('indexMethodBadge').innerText = "TXT 章节正则匹配";
-            document.getElementById('indexMethodBadge').className = "badge";
-            renderWorkspace();
-        };
-        reader.readAsText(file, 'utf-8');
-    }
-
-    // 渲染整体工作台
+    // 渲染工作区
     function renderWorkspace() {
         workspace.style.display = 'block';
         document.getElementById('bookTitle').innerText = baseFileName;
@@ -781,7 +906,7 @@
         updateFixedPreviewHint();
     }
 
-    // 渲染左侧章节列表
+    // 渲染左侧章节
     function renderChapterList() {
         const container = document.getElementById('chapterListContainer');
         container.innerHTML = "";
@@ -789,7 +914,6 @@
             const div = document.createElement('div');
             div.className = 'chapter-item';
             div.id = `chapter-item-${ch.index}`;
-            // 绑定点击事件，处理单选与 Shift 连选
             div.onclick = (e) => handleChapterClick(e, ch.index);
 
             div.innerHTML = `
@@ -803,15 +927,13 @@
         });
     }
 
-    // --- 核心新增：Shift 框选核心逻辑 ---
+    // Shift 框选机制
     function handleChapterClick(e, index) {
         if (e.shiftKey && lastAnchorIndex !== null) {
-            // Shift + 点击：范围框选
             const start = Math.min(lastAnchorIndex, index);
             const end = Math.max(lastAnchorIndex, index);
             setSelectionRange(start, end);
         } else {
-            // 普通点击：重置为起点锚点
             lastAnchorIndex = index;
             setSelectionRange(index, index);
         }
@@ -821,14 +943,12 @@
         selectedRange = { start, end };
         const totalSelected = end - start + 1;
 
-        // 更新 DOM 样式高亮
         document.querySelectorAll('.chapter-item').forEach(el => el.classList.remove('selected'));
         for (let i = start; i <= end; i++) {
             const el = document.getElementById(`chapter-item-${i}`);
             if (el) el.classList.add('selected');
         }
 
-        // 显示浮动操作条 (选了 1 个或多个都展示)
         const dock = document.getElementById('selectionDock');
         dock.style.display = 'flex';
         document.getElementById('dockRangeText').innerHTML = `已框选 <b>第 ${start} ~ ${end} 章</b>`;
@@ -842,32 +962,26 @@
         document.getElementById('selectionDock').style.display = 'none';
     }
 
-    // 一键将框选区域生成为新分卷
     function applySelectionToRange() {
         if (!selectedRange.start || !selectedRange.end) return;
-
-        // 确保右侧处于“事件分卷组合”模式
         switchMode('event');
 
         const container = document.getElementById('rangeListContainer');
         const rows = container.querySelectorAll('.range-row');
         const volNum = rows.length + 1;
 
-        // 添加该分卷行
         addRangeRowDirect(selectedRange.start, selectedRange.end, `第${volNum}卷`);
 
-        // 成功反馈并滚动到底部
         const lastRow = container.lastElementChild;
         lastRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         lastRow.style.borderColor = 'var(--primary)';
         setTimeout(() => lastRow.style.borderColor = 'var(--border)', 1000);
 
-        // 重设起点锚点为 end + 1，方便下次直接继续顺着连选
         lastAnchorIndex = Math.min(selectedRange.end + 1, chapters.length);
         clearSelection();
     }
 
-    // --- 分卷行管理 ---
+    // 分卷区间
     function initDefaultRanges() {
         const container = document.getElementById('rangeListContainer');
         container.innerHTML = "";
@@ -919,7 +1033,6 @@
         }
     }
 
-    // 固定步长提示
     document.getElementById('fixedChapterStep').addEventListener('input', updateFixedPreviewHint);
     function updateFixedPreviewHint() {
         const step = parseInt(document.getElementById('fixedChapterStep').value) || 1;
@@ -928,7 +1041,7 @@
         document.getElementById('fixedPreviewHint').innerText = `每卷 ${step} 章，总计将切分为 ${count} 个独立 TXT 文本。`;
     }
 
-    // --- 导出逻辑 ---
+    // 执行导出
     async function executeCurrentExport() {
         const zip = new JSZip();
 
